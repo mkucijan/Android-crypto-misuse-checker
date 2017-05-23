@@ -10,7 +10,7 @@ import org.argus.jawa.core.{Global, JawaMethod}
 import org.argus.jawa.core.util._
 
 
-//works only inside 1 function
+//works only inside the scope of givens function
 
 class ExtendedCryptographicMisuse extends ApiMisuseChecker {
 
