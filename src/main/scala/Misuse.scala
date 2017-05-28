@@ -6,6 +6,7 @@ import java.io.File
 import org.argus.amandroid.alir.componentSummary.ApkYard
 import org.argus.amandroid.core.decompile.{DecompileLayout, DecompileStrategy, DecompilerSettings}
 import org.argus.amandroid.core.AndroidGlobalConfig
+import org.argus.jawa.alir.pta.suspark.InterproceduralSuperSpark
 import org.argus.jawa.core.util.IgnoreException
 import org.argus.jawa.core._
 import org.argus.jawa.core.util._
@@ -19,7 +20,7 @@ object ApiCryptoMisuse {
     try {
 
       val debug = false
-      val checker = new ExtendedCryptographicMisuse
+      val checker = new ExtCryptographicMisuse
       val fileUri = FileUtil.toUri(args(0))
       val outputUri = FileUtil.toUri(args(1))
       val reporter = new DefaultReporter
@@ -29,7 +30,7 @@ object ApiCryptoMisuse {
       val settings = DecompilerSettings(debugMode = false, forceDelete = true, strategy, reporter)
       val apk = yard.loadApk(fileUri, settings, collectInfo = true)
 
-      /* For second version (ExtCryptographicMisuse)
+       //For second version (ExtCryptographicMisuse)
       apk.model.getComponents foreach {
         comp =>
           val clazz = apk.getClassOrResolve(comp)
@@ -37,9 +38,9 @@ object ApiCryptoMisuse {
           val res = checker.check(apk, Some(idfg))
           println(comp)
           println(res.toString)
-      }*/
-      val res = checker.check(apk,None);
-      println(res)
+      }
+      //val res = checker.check(apk,None);
+      //println(res)
 
       if (debug) println("Debug info write into " + reporter.asInstanceOf[FileReporter].f)
     } catch {
