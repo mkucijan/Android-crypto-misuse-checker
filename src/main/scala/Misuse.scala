@@ -30,17 +30,9 @@ object ApiCryptoMisuse {
       val settings = DecompilerSettings(debugMode = false, forceDelete = true, strategy, reporter)
       val apk = yard.loadApk(fileUri, settings, collectInfo = true)
 
-       //For second version (ExtCryptographicMisuse)
-      apk.model.getComponents foreach {
-        comp =>
-          val clazz = apk.getClassOrResolve(comp)
-          val idfg = InterproceduralSuperSpark(apk, clazz.getDeclaredMethods.map(_.getSignature))
-          val res = checker.check(apk, Some(idfg))
-          println(comp)
-          println(res.toString)
-      }
-      //val res = checker.check(apk,None);
-      //println(res)
+
+      val res = checker.check(apk,None);
+      println(res)
 
       if (debug) println("Debug info write into " + reporter.asInstanceOf[FileReporter].f)
     } catch {

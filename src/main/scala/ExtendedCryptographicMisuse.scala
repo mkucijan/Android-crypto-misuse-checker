@@ -10,7 +10,7 @@ import org.argus.jawa.core.{Global, JawaMethod}
 import org.argus.jawa.core.util._
 
 
-//works only inside the scope of givens function
+//works only inside the scope of given function
 
 class ExtendedCryptographicMisuse extends ApiMisuseChecker {
 
@@ -19,6 +19,7 @@ class ExtendedCryptographicMisuse extends ApiMisuseChecker {
   def check(global: Global, idfgOpt: Option[InterproceduralDataFlowGraph]): ApiMisuseResult = {
     val misusedApis: MMap[(String, String), String] = mmapEmpty
     global.getApplicationClassCodes foreach { case (typ, f) =>
+      //println(f.code)
       if(f.code.contains("Ljavax/crypto/Cipher;.getInstance:(Ljava/lang/String;")) {
         global.getClazz(typ) match {
           case Some(c) =>

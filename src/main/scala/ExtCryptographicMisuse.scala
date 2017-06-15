@@ -12,7 +12,7 @@ import org.argus.jawa.alir.pta.{Instance, PTAConcreteStringInstance, PTAResult, 
 import org.argus.jawa.alir.util.ExplicitValueFinder
 import org.argus.jawa.compiler.parser.{AssignmentStatement, CallStatement, NameExpression}
 import org.argus.jawa.core._
-import org.argus.jawa.core.util._
+import org.argus.jawa.core.util.{ISet, _}
 import org.argus.jawa.alir.Context
 
 
@@ -24,67 +24,73 @@ class ExtCryptographicMisuse extends ApiMisuseChecker {
 
   def check(global: Global,idfgOpt: Option[InterproceduralDataFlowGraph]): ApiMisuseResult = {
 
-        val idfg = idfgOpt.get
-        this.idfg=idfgOpt
-        this.apk=Some(global)
-        val icfg = idfg.icfg
-        val ptaresult = idfg.ptaresult
-        val nodeMap: MMap[String, MSet[ICFGCallNode]] = mmapEmpty
-
-        icfg.nodes.foreach {
-          node =>
-            val result = getCryptoNode(global, node)
-            result.foreach {
-              r =>
-                nodeMap.getOrElseUpdate(r._1, msetEmpty) += r._2
-            }
-        }
         val misusedApis: MMap[(String, String), String] = mmapEmpty
-        val rule1Res = ECBCheck(global, nodeMap, ptaresult)
-        rule1Res.foreach {
-          case (n, b) =>
-            if (!b) {
-              misusedApis((n.getContext.getMethodSig.signature, n.getContext.getCurrentLocUri)) = "Using ECB mode!"
-            }
-        }
-        val rule2Res = IVCheck(global, nodeMap, ptaresult)
-        rule2Res.foreach {
-          case (n, r) =>
-            if (r.isDefined) {
-              misusedApis((n.getContext.getMethodSig.signature, n.getContext.getCurrentLocUri)) = r.get
-            }
-        }
+        global.getApplicationClasses foreach {
+          clazz =>
+          //val clazz = global.getClassOrResolve(comp._1)
+          val idfg = InterproceduralSuperSpark(global, clazz.getDeclaredMethods.map(_.getSignature))
+          this.idfg = Some(idfg)
+          this.apk = Some(global)
+          val icfg = idfg.icfg
+          val ptaresult = idfg.ptaresult
 
-        val rule3Res = KeyCheck(global, nodeMap, ptaresult)
-        rule3Res.foreach {
-          case (n, r) =>
-            if (r.isDefined) {
-              misusedApis((n.getContext.getMethodSig.signature, n.getContext.getCurrentLocUri)) = r.get
-            }
-        }
+          val nodeMap: MMap[String, MSet[ICFGCallNode]] = mmapEmpty
 
-        val rule4Res = PBEKeySpecSaltCheck(global, nodeMap, ptaresult)
-        rule4Res.foreach {
-          case (n, r) =>
-            if (r.isDefined) {
-              misusedApis((n.getContext.getMethodSig.signature, n.getContext.getCurrentLocUri)) = r.get
-            }
-        }
+          icfg.nodes.foreach {
+            node =>
+              val result = getCryptoNode(global, node)
+              result.foreach {
+                r =>
+                  nodeMap.getOrElseUpdate(r._1, msetEmpty) += r._2
+              }
+          }
 
-        val rule5Res = PBEKeySpecIterCheck(global, nodeMap, ptaresult)
-        rule5Res.foreach {
-          case (n, r) =>
-            if (r.isDefined) {
-              misusedApis((n.getContext.getMethodSig.signature, n.getContext.getCurrentLocUri)) += r.get
-            }
-        }
+          val rule1Res = ECBCheck(global, nodeMap, ptaresult)
+          rule1Res.foreach {
+            case (n, b) =>
+              if (!b) {
+                misusedApis((n.getContext.getMethodSig.signature, n.getContext.getCurrentLocUri)) = "Using ECB mode!"
+              }
+          }
+          val rule2Res = IVCheck(global, nodeMap, ptaresult)
+          rule2Res.foreach {
+            case (n, r) =>
+              if (r.isDefined) {
+                misusedApis((n.getContext.getMethodSig.signature, n.getContext.getCurrentLocUri)) = r.get
+              }
+          }
 
-        val rule6Res = SecureRandomCheck(global, nodeMap, ptaresult)
-        rule6Res.foreach {
-          case (n, r) =>
-            if (r.isDefined) {
-              misusedApis((n.getContext.getMethodSig.signature, n.getContext.getCurrentLocUri)) = r.get
-            }
+          val rule3Res = KeyCheck(global, nodeMap, ptaresult)
+          rule3Res.foreach {
+            case (n, r) =>
+              if (r.isDefined) {
+                misusedApis((n.getContext.getMethodSig.signature, n.getContext.getCurrentLocUri)) = r.get
+              }
+          }
+
+          val rule4Res = PBEKeySpecSaltCheck(global, nodeMap, ptaresult)
+          rule4Res.foreach {
+            case (n, r) =>
+              if (r.isDefined) {
+                misusedApis((n.getContext.getMethodSig.signature, n.getContext.getCurrentLocUri)) = r.get
+              }
+          }
+
+          val rule5Res = PBEKeySpecIterCheck(global, nodeMap, ptaresult)
+          rule5Res.foreach {
+            case (n, r) =>
+              if (r.isDefined) {
+                misusedApis((n.getContext.getMethodSig.signature, n.getContext.getCurrentLocUri)) += r.get
+              }
+          }
+
+          val rule6Res = SecureRandomCheck(global, nodeMap, ptaresult)
+          rule6Res.foreach {
+            case (n, r) =>
+              if (r.isDefined) {
+                misusedApis((n.getContext.getMethodSig.signature, n.getContext.getCurrentLocUri)) = r.get
+              }
+          }
         }
         ApiMisuseResult(name, misusedApis.toMap)
     }
@@ -113,13 +119,15 @@ class ExtCryptographicMisuse extends ApiMisuseChecker {
   }
 
 
-  def retrive_string_arguments(value: Instance,k: Int):MMap[Context, MSet[String]] = {
+  def retrive_string_arguments(value: Instance,k: Int,depth: Int):MMap[Context, MSet[String]] = {
+    if (depth>=10)
+      return mmapEmpty
 
     val (sig, str) = value.defSite.getContext.head
 
     val argMap: MMap[Context, MSet[String]] = mmapEmpty
     idfg.get.icfg.nodes foreach {
-      case cn: ICFGCallNode if cn.getCalleeSig == sig =>
+      case cn: ICFGCallNode if ((cn.getCalleeSig == sig) && cn.argNames.size>k) =>
 
         val baseSlot = VarSlot(cn.argNames.head, isBase = false, isArg = true)
         val bases = idfg.get.ptaresult.pointsToSet(baseSlot, cn.getContext)
@@ -142,7 +150,7 @@ class ExtCryptographicMisuse extends ApiMisuseChecker {
         for (base <- bases;
              vl <- values) {
           if (base.isUnknown &&(next_k != -1))
-            argMap ++= retrive_string_arguments(base,next_k)
+            argMap ++= retrive_string_arguments(base,next_k,depth+1)
           argMap.getOrElseUpdate(base.defSite, msetEmpty) += vl
         }
       case _ =>
@@ -180,14 +188,22 @@ class ExtCryptographicMisuse extends ApiMisuseChecker {
             i += 1
         }
 
+        val v_name=ExplicitValueFinder.findExplicitLiteralForArgs(m, loc, argNames(0)).filter(_.isString).map(_.getString)
         val argMap: MMap[Context, MSet[String]] = mmapEmpty
-        argValue foreach {
-          case instance: PTAConcreteStringInstance =>
-            if (CryptographicConstants.getECBSchemes.contains(instance.string))
+        if(v_name.isEmpty) {
+          argValue foreach {
+            case instance: PTAConcreteStringInstance =>
+              if (CryptographicConstants.getECBSchemes.contains(instance.string))
+                result += (node -> false)
+            case value =>
+              if (value.isUnknown && (k != -1))
+                argMap ++= retrive_string_arguments(value, k,0)
+          }
+        } else {
+          v_name.foreach { str =>
+            if(CryptographicConstants.getECBSchemes.contains(str))
               result += (node -> false)
-          case value =>
-            if(value.isUnknown && (k != -1))
-              argMap ++= retrive_string_arguments(value,k)
+          }
         }
         argMap.foreach {
           f=>
@@ -198,14 +214,16 @@ class ExtCryptographicMisuse extends ApiMisuseChecker {
     result.toMap
   }
 
-  def retrive_arg_state(v: Instance,k : Int): Boolean = {
+  def retrive_arg_state(v: Instance,k : Int,depth : Int): Boolean = {
 
+    if(depth>=10)
+      return false
     val (sig, str) = v.defSite.getContext.head
     var flag_s=false
 
 
     idfg.get.icfg.nodes foreach {
-      case cn: ICFGCallNode if (cn.getCalleeSig == sig) =>
+      case cn: ICFGCallNode if ((cn.getCalleeSig == sig) && (cn.argNames.size>=k)) =>
         val argSlot = VarSlot(cn.argNames(k), isBase = false, isArg = true)
         val argValue = idfg.get.ptaresult.pointsToSet(argSlot, cn.context)
 
@@ -228,7 +246,7 @@ class ExtCryptographicMisuse extends ApiMisuseChecker {
         if((next_k != -1) && (flag_s == false)) {
           argValue.foreach {
             instance =>
-              if(retrive_arg_state(instance,next_k))
+              if(retrive_arg_state(instance,next_k,depth+1))
                 return true
           }
         }
@@ -278,11 +296,11 @@ class ExtCryptographicMisuse extends ApiMisuseChecker {
 
         if((k != -1) && (flag_s == false)) {
           if(argValue.head.isUnknown)
-            flag_s = retrive_arg_state(argValue.head, k)
+            flag_s = retrive_arg_state(argValue.head, k,0)
         }
 
         if(flag_s)
-          result += (node -> Some("Constant IV!"))
+          result += (node -> Some("non-random IV!"))
     }
     result.toMap
   }
@@ -329,7 +347,7 @@ class ExtCryptographicMisuse extends ApiMisuseChecker {
 
         if((k != -1) && (flag_s == false)) {
           if(argValue.head.isUnknown)
-            flag_s = retrive_arg_state(argValue.head, k)
+            flag_s = retrive_arg_state(argValue.head, k,0)
         }
 
         if(flag_s)
@@ -381,7 +399,7 @@ def PBEKeySpecSaltCheck(global: Global, nodeMap: MMap[String, MSet[ICFGCallNode]
 
       if((k != -1) && (flag_s == false)) {
         if(argValue.head.isUnknown)
-          flag_s = retrive_arg_state(argValue.head, k)
+          flag_s = retrive_arg_state(argValue.head, k,0)
       }
 
       if(flag_s) {
@@ -393,14 +411,16 @@ def PBEKeySpecSaltCheck(global: Global, nodeMap: MMap[String, MSet[ICFGCallNode]
   }
 
 
-  def retrive_arg_int(v: Instance,k : Int): Set[Int] = {
+  def retrive_arg_int(v: Instance,k : Int,depth : Int): Set[Int] = {
+    if(depth>=10)
+      return Set[Int]()
 
     val (sig, str) = v.defSite.getContext.head
 
 
     var res = Set[Int]()
     idfg.get.icfg.nodes foreach {
-      case cn: ICFGCallNode if (cn.getCalleeSig == sig) =>
+      case cn: ICFGCallNode if ((cn.getCalleeSig == sig)&&(cn.argNames.size>k)) =>
         val argSlot = VarSlot(cn.argNames(k), isBase = false, isArg = true)
         val argValue = idfg.get.ptaresult.pointsToSet(argSlot, cn.context)
 
@@ -423,7 +443,7 @@ def PBEKeySpecSaltCheck(global: Global, nodeMap: MMap[String, MSet[ICFGCallNode]
         if((next_k != -1) && (res.isEmpty)) {
           argValue.foreach {
             instance =>
-              return retrive_arg_int(instance,next_k)
+              return retrive_arg_int(instance,next_k,depth+1)
           }
         }
       case _ =>
@@ -474,7 +494,7 @@ def PBEKeySpecSaltCheck(global: Global, nodeMap: MMap[String, MSet[ICFGCallNode]
 
         if((k != -1) && (flag_s.isEmpty)) {
           if(argValue.head.isUnknown)
-            flag_s = retrive_arg_int(argValue.head, k)
+            flag_s = retrive_arg_int(argValue.head, k,0)
         }
         flag_s.foreach {
           num =>
@@ -528,7 +548,7 @@ def PBEKeySpecSaltCheck(global: Global, nodeMap: MMap[String, MSet[ICFGCallNode]
 
         if((k != -1) && (flag_s == false)) {
           if(argValue.head.isUnknown)
-            flag_s = retrive_arg_state(argValue.head, k)
+            flag_s = retrive_arg_state(argValue.head, k,0)
         }
 
         if(flag_s)
